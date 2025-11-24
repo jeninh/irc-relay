@@ -1,0 +1,18 @@
+{
+  "name": "discord-irc-relay",
+  "version": "1.0.0",
+  "description": "Discord ↔ IRC relay bot for Hack Club",
+  "main": "bot.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.0",
+    "dotenv": "^16.3.1",
+    "irc-framework": "^4.11.0"
+  }
+}

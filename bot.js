@@ -145,7 +145,7 @@ function setupIRCClient() {
     port: IRC_PORT,
     tls: IRC_TLS,
     rejectUnauthorized: false,
-    gecos: 'Discord IRC Relay Bot',
+    gecos: 'https://discord.gg/k2qKFXd4nx',
   });
 
   // Handle LIST responses (numeric 322 and 323)
@@ -154,9 +154,10 @@ function setupIRCClient() {
       // RPL_LIST: :server 322 nick channel :topic
       const match = event.line.match(/322 \S+ (\S+)/);
       if (match && match[1].startsWith('#') && match[1].length > 1) {
-        // Filter out invalid channels like "#" or ones that are just numbers
+        // Filter out invalid channels like "#", numbers only, or special service channels
         const channelName = match[1];
-        if (!/^#[\d-]+$/.test(channelName)) {
+        // Only accept channels with at least one alphanumeric character that isn't just dashes/numbers
+        if (!/^#[\d\-]*$/.test(channelName) && !/^#(services|chanserv|nickserv|ircop)$/i.test(channelName)) {
           ircChannels.add(channelName);
         }
       }
@@ -283,13 +284,22 @@ function stripIRCFormatting(text) {
 /**
  * Sanitize IRC channel name for Discord channel name
  * Discord channels can only have lowercase letters, numbers, hyphens, and underscores
+ * Names must start with alphanumeric
  */
 function sanitizeChannelName(ircChannel) {
-  return ircChannel
+  let sanitized = ircChannel
     .toLowerCase()
     .replace(/^#/, '') // Remove leading #
     .replace(/[^a-z0-9-_]/g, '-') // Replace invalid chars with hyphen
-    .substring(0, 94) + '-irc'; // Discord channel name limit (100 - 4 for "-irc")
+    .replace(/^-+/, '') // Remove leading dashes
+    .substring(0, 94);
+  
+  // Ensure it doesn't become empty
+  if (!sanitized) {
+    sanitized = 'channel';
+  }
+  
+  return sanitized + '-irc'; // Discord channel name limit (100 - 4 for "-irc")
 }
 
 /**
@@ -360,7 +370,6 @@ async function syncDiscordChannels() {
 
   let categoryIndex = 0;
   let channelCountInCategory = 0;
-  let currentCategory = null;
 
   for (const ircChannel of sortedChannels) {
     const discordChannelName = sanitizeChannelName(ircChannel);
@@ -386,9 +395,22 @@ async function syncDiscordChannels() {
       targetCategory = mainCategory;
     } else {
       // Regular channels go to MISC categories
-      if (channelCountInCategory >= MAX_CHANNELS_PER_CATEGORY) {
-        categoryIndex++;
-        channelCountInCategory = 0;
+      // Count existing channels in current category to determine if we need to move to next
+      const currentCategoryName = `${DISCORD_MISC_CATEGORY_PREFIX} ${categoryIndex}`;
+      const currentCategory = guild.channels.cache.find(
+        (ch) => ch.type === 4 && ch.name === currentCategoryName
+      );
+      
+      if (currentCategory) {
+        const channelsInCategory = currentCategory.children.cache.filter(
+          (ch) => ch.isTextBased()
+        ).size;
+        
+        // If current category is full, move to next
+        if (channelsInCategory >= MAX_CHANNELS_PER_CATEGORY) {
+          categoryIndex++;
+          channelCountInCategory = 0;
+        }
       }
 
       targetCategory = guild.channels.cache.find(
